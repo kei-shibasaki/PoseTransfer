@@ -1,0 +1,31 @@
+{
+    "name": "test",
+
+    "CPEk": 3,
+    "SourcePoseEncoder": {
+        "dim": 64,
+        "heads": 8,
+        "mlp_ratio": 4,
+        "n_block": 2
+    },
+    "OuterDecoder": {
+        "dim": 64,
+        "heads": 8,
+        "mlp_ratio": 4,
+        "n_block": 2
+    },
+    "InnerDecoder": {
+        "dim": 64,
+        "heads": 8,
+        "mlp_ratio": 4,
+        "n_block": 2
+    },
+
+    "train": {
+        "batchsize": 8
+    },
+
+    "val": {
+        "batchsize": 8
+    }
+}

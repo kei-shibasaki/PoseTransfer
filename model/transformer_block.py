@@ -33,3 +33,56 @@ class SourcePoseEncoder(nn.Module):
             x = a + x
             x = mlp(x)
 
+class OuterDecoder(nn.Module):
+    def __init__(self, dim, heads, mlp_ratio, n_block):
+        super(OuterDecoder, self).__init__()
+        self.n_block = n_block
+        
+        for i in range(n_block):
+            clayernorm = ConditionalChanLayerNorm(dim)
+            crow_attn = ConditionalAxialAttention(dim, heads, mode='row', masked=False)
+            ccol_attn = ConditionalAxialAttention(dim, heads, mode='colmun', masked=True)
+            cmlp = ConditionalMLP(dim, mlp_ratio)
+            setattr(self, f'clayernorm_{i}', clayernorm)
+            setattr(self, f'crow_attn_{i}', crow_attn)
+            setattr(self, f'ccol_attn_{i}', ccol_attn)
+            setattr(self, f'cmlp_{i}', cmlp)
+    
+    def forward(self, x, context):
+        for i in range(self.n_block):
+            clayernorm = getattr(self, f'clayernorm_{i}')
+            crow_attn = getattr(self, f'crow_attn_{i}')
+            ccol_attn = getattr(self, f'ccol_attn_{i}')
+            cmlp = getattr(self, f'cmlp_{i}')
+            
+            a = x
+            x = clayernorm(x, context)
+            x = crow_attn(x, context)
+            x = ccol_attn(x, context)
+            x = a + x
+            x = cmlp(x, context)
+
+class InnerDecoder(nn.Module):
+    def __init__(self, dim, heads, mlp_ratio, n_block):
+        super(InnerDecoder, self).__init__()
+        self.n_block = n_block
+        
+        for i in range(n_block):
+            clayernorm = ConditionalChanLayerNorm(dim)
+            crow_attn = ConditionalAxialAttention(dim, heads, mode='row', masked=False)
+            cmlp = ConditionalMLP(dim, mlp_ratio)
+            setattr(self, f'clayernorm_{i}', clayernorm)
+            setattr(self, f'crow_attn_{i}', crow_attn)
+            setattr(self, f'cmlp_{i}', cmlp)
+    
+    def forward(self, x, context):
+        for i in range(self.n_block):
+            clayernorm = getattr(self, f'clayernorm_{i}')
+            crow_attn = getattr(self, f'crow_attn_{i}')
+            cmlp = getattr(self, f'cmlp_{i}')
+            
+            a = x
+            x = clayernorm(x, context)
+            x = crow_attn(x, context)
+            x = a + x
+            x = cmlp(x, context)

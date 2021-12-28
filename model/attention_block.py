@@ -70,15 +70,17 @@ class AxialAttention(nn.Module):
 class MLP(nn.Module):
     def __init__(self, dim, mlp_ratio=4):
         super(MLP, self).__init__()
-        self.feed_forward = nn.Sequential(
-            ChanLayerNorm(dim), 
-            nn.Conv2d(dim, dim*mlp_ratio, kernel_size=1, bias=False),
-            nn.GELU(), 
-            nn.Conv2d(dim*mlp_ratio, dim, kernel_size=1, bias=False)
-        )
+        self.lnorm = ChanLayerNorm(dim)
+        self.conv1 = nn.Conv2d(dim, dim*mlp_ratio, kernel_size=1, bias=False)
+        self.gelu = nn.GELU()
+        self.conv2 = nn.Conv2d(dim*mlp_ratio, dim, kernel_size=1, bias=False)
     
     def forward(self, x):
-        return x + self.feed_forward(x)
+        h = self.lnorm(x)
+        h = self.conv1(h)
+        h = self.gelu(h)
+        h = self.conv2(h)
+        return x + h
 
 
 ### Conditional ###
@@ -164,20 +166,23 @@ class ConditionalAxialAttention(nn.Module):
 
 class ConditionalMLP(nn.Module):
     def __init__(self, dim, mlp_ratio=4):
-        super(MLP, self).__init__()
-        self.feed_forward = nn.Sequential(
-            ConditionalChanLayerNorm(dim), 
-            nn.Conv2d(dim, dim*mlp_ratio, kernel_size=1, bias=False),
-            nn.GELU(), 
-            nn.Conv2d(dim*mlp_ratio, dim, kernel_size=1, bias=False)
-        )
+        super(ConditionalMLP, self).__init__()
+        self.clnorm = ConditionalChanLayerNorm(dim)
+        self.conv1 = nn.Conv2d(dim, dim*mlp_ratio, kernel_size=1, bias=False)
+        self.gelu = nn.GELU()
+        self.conv2 = nn.Conv2d(dim*mlp_ratio, dim, kernel_size=1, bias=False)
         
         self.to_scale = nn.Conv2d(dim, dim, kernel_size=1, bias=False)
         self.to_shift = nn.Conv2d(dim, dim, kernel_size=1, bias=False)
     
     def forward(self, x, context):
         assert x.shape==context.shape
-        h = x + self.feed_forward(x)
+        h = self.clnorm(x, context)
+        h = self.conv1(h)
+        h = self.gelu(h)
+        h = self.conv2(h)
+        h = x + h
+        
         scale = self.to_scale(context)
         shift = self.to_shift(context)
         return scale*h + shift
