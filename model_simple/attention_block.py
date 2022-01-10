@@ -38,16 +38,13 @@ class AxialAttention(nn.Module):
         return torch.Tensor(mask).to(x.device)
     
     def forward(self, x, kv=None):
-        # kv.shape must be (B, C, H, W)
         b_size, channel, height, width = x.shape
-        kv = x if kv is None else kv
         if self.mode=='row':
             x = x.reshape(-1, width, channel)
-            kv = kv.reshape(-1, width, channel)
         else: # column
             x = x.reshape(-1, height, channel)
-            kv = kv.reshape(-1, height, channel)
         
+        kv = x if kv is None else kv
         q, k, v = (self.to_q(x), *self.to_kv(kv).chunk(2,dim=-1))
         
         b, t, d, h, e = *q.shape, self.heads, self.dim_heads

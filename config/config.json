@@ -1,31 +1,54 @@
 {
     "name": "test",
 
-    "CPEk": 3,
-    "SourcePoseEncoder": {
-        "dim": 64,
+    "dataset_path": "./dataset/fashion/",
+
+    "PoseTransfer":{
+        "CPEk": 3,
+        "hidden_dim": 512,
         "heads": 8,
-        "mlp_ratio": 4,
-        "n_block": 2
+        "mlp_ratio": 1,
+
+        "SourcePoseEncoder": {
+            "n_block": 4
+        },
+        "OuterDecoder": {
+            "n_block": 2
+        },
+        "InnerDecoder": {
+            "n_block": 2
+        },
+
+        "train": {
+            "resolution": 64,
+            "epoch": 10,
+            "batch_size": 4,
+            "print_freq": 100,
+            "eval_freq": 1000,
+            "init_lr": 2e-4,
+            "milestones": [250000, 400000],
+            "gamma": 0.5
+        },
+    
+        "val": {
+            "batch_size": 8,
+            "val_step": 8
+        }
     },
-    "OuterDecoder": {
-        "dim": 64,
-        "heads": 8,
-        "mlp_ratio": 4,
-        "n_block": 2
-    },
-    "InnerDecoder": {
-        "dim": 64,
+
+    "ColorUpsampler":{
+        "CPEk": 3,
+        "hidden_dim": 128,
         "heads": 8,
         "mlp_ratio": 4,
         "n_block": 2
     },
 
-    "train": {
-        "batchsize": 8
-    },
-
-    "val": {
-        "batchsize": 8
+    "SpatialUpsampler":{
+        "CPEk": 3,
+        "hidden_dim": 32,
+        "heads": 4,
+        "mlp_ratio": 4,
+        "n_block": 4
     }
 }

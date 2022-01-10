@@ -37,7 +37,7 @@ class PoseTransferModel(nn.Module):
         
         self.to_out = nn.Sequential(
             ChanLayerNorm(opt['hidden_dim']),
-            nn.Conv2d(opt['hidden_dim'], self.num_symbols, kernel_size=1, bias=False))
+            nn.Conv2d(opt['hidden_dim'], 3, kernel_size=1, bias=False))
         
         self.pixel_embed_layer = nn.Linear(self.num_symbols, opt['hidden_dim'], bias=False)
         
@@ -68,19 +68,13 @@ class PoseTransferModel(nn.Module):
         activations = self.to_out(h_inner)
         return activations
     
-    def image_loss(self, logits, labels):
-        loss = F.cross_entropy(input=logits.softmax(dim=1), target=labels)
+    def image_loss(self, images, targets):
+        loss = F.l1_loss(images, targets)
         return loss
     
     def loss(self, logits, targets):
-        # [0,1]->[0,255]
-        labels = (targets*255).to(torch.int32)
-        labels = convert_bits(labels, n_bits_in=8, n_bits_out=3).to(torch.int64)
-        labels = labels_to_bins(labels, self.num_symbols_per_channel)
-        # (B,H,W)->(B,H,W,512)->(B,512,H,W)
-        # labels = F.one_hot(labels, num_classes=self.num_symbols).permute(0,3,1,2).float()
-        loss = self.image_loss(logits, labels)
-        
+        images = torch.tanh(logits)
+        loss = self.image_loss(images, targets)
         return loss
     
     def autoregressive_sample(self, z, mode='sample'):

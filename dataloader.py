@@ -42,25 +42,35 @@ def keypoints2posemap(ann, img_size=(256, 256)):
     posemap = torch.Tensor(posemap)
     return posemap
 
-class DeepFashionDataset(torch.utils.data.Dataset):
-    def __init__(self, dataset_path='./dataset/fashion/'):
+class DeepFashionTrainDataset(torch.utils.data.Dataset):
+    def __init__(self, res=64, dataset_path='./dataset/fashion/'):
         '''
         directories or files using for creating dataset
         train_256
         fasion-annotation-train.csv
         fasion-pairs-train.csv
         '''
-        super(DeepFashionDataset, self).__init__()
+        super(DeepFashionTrainDataset, self).__init__()
         
         self.dataset_path = dataset_path
         self.annfile = pd.read_csv(os.path.join(dataset_path, 'fasion-annotation-train.csv'), sep=':')
         self.annfile = self.annfile.set_index('name')
         self.pairlist = pd.read_csv(os.path.join(dataset_path, 'fasion-pairs-train.csv'), sep=',', index_col=0)
         
-        self.transform = transforms.Compose([
+        self.transform_image_source = transforms.Compose([
+            transforms.Resize(res),
             transforms.ToTensor(), 
-            transforms.Normalize((0.5, 0.5, 0.5),(0.5, 0.5, 0.5))
         ])
+        self.transform_image_target = transforms.Compose([
+            transforms.Resize(res),
+            transforms.ToTensor()
+        ])
+        self.transform_ann = transforms.Compose([
+            transforms.Resize(res)
+        ])
+    
+    def __len__(self):
+        return len(self.pairlist)
     
     def __getitem__(self, idx):
         row = self.pairlist.iloc[idx]
@@ -73,8 +83,55 @@ class DeepFashionDataset(torch.utils.data.Dataset):
         ann_P1 = keypoints2posemap(ann_P1)
         ann_P2 = keypoints2posemap(ann_P2)
         
-        P1, P2 = self.transform(P1), self.transform(P2)
+        P1, P2 = self.transform_image_source(P1), self.transform_image_target(P2)
+        ann_P1, ann_P2 = self.transform_ann(ann_P1), self.transform_ann(ann_P2)
         
         return {'P1': P1, 'P2': P2, 'map1': ann_P1, 'map2': ann_P2, 
                 'P1_path': P1_path, 'P2_path': P2_path}
+
+class DeepFashionValDataset(torch.utils.data.Dataset):
+    def __init__(self, res=64, dataset_path='./dataset/fashion/'):
+        '''
+        directories or files using for creating dataset
+        test_256
+        fasion-annotation-test.csv
+        fasion-pairs-test.csv
+        '''
+        super(DeepFashionValDataset, self).__init__()
         
+        self.dataset_path = dataset_path
+        self.annfile = pd.read_csv(os.path.join(dataset_path, 'fasion-annotation-test.csv'), sep=':')
+        self.annfile = self.annfile.set_index('name')
+        self.pairlist = pd.read_csv(os.path.join(dataset_path, 'fasion-pairs-test.csv'), sep=',', index_col=0)
+        
+        self.transform_image_source = transforms.Compose([
+            transforms.Resize(res),
+            transforms.ToTensor(), 
+        ])
+        self.transform_image_target = transforms.Compose([
+            transforms.Resize(res),
+            transforms.ToTensor()
+        ])
+        self.transform_ann = transforms.Compose([
+            transforms.Resize(res)
+        ])
+    
+    def __len__(self):
+        return len(self.pairlist)
+    
+    def __getitem__(self, idx):
+        row = self.pairlist.iloc[idx]
+        P1_name, P2_name = row['from'], row['to']
+        P1_path = os.path.join(self.dataset_path, 'test_256', P1_name)
+        P2_path = os.path.join(self.dataset_path, 'test_256', P2_name)
+        
+        P1, P2 = Image.open(P1_path), Image.open(P2_path)
+        ann_P1, ann_P2 = self.annfile.loc[P1_name], self.annfile.loc[P2_name]
+        ann_P1 = keypoints2posemap(ann_P1)
+        ann_P2 = keypoints2posemap(ann_P2)
+        
+        P1, P2 = self.transform_image_source(P1), self.transform_image_target(P2)
+        ann_P1, ann_P2 = self.transform_ann(ann_P1), self.transform_ann(ann_P2)
+        
+        return {'P1': P1, 'P2': P2, 'map1': ann_P1, 'map2': ann_P2, 
+                'P1_path': P1_path, 'P2_path': P2_path}
