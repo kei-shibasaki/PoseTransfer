@@ -133,3 +133,4 @@ dataset/
 temp*/
 temp*
 experiments/*
+results/*

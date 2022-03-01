@@ -18,7 +18,6 @@ from utils.pose_utils import draw_pose_from_map, press_pose
 from metrics import calculate_psnr, calculate_ssim
 from losses import GANLoss, gradient_penalty, VGGLoss
 
-
 def train(opt_path):
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
     
@@ -35,24 +34,18 @@ def train(opt_path):
     os.makedirs(image_out_dir, exist_ok=True)
     os.makedirs(log_dir, exist_ok=True)
     with open(f'{log_dir}/log_{model_name}.log', mode='w', encoding='utf-8') as fp:
-        fp.write(f'')
+        fp.write('')
     with open(f'{log_dir}/losses_{model_name}.csv', mode='w', encoding='utf-8') as fp:
         fp.write('')
     
     shutil.copy(opt_path, f'./experiments/{model_name}/{os.path.basename(opt_path)}')
+    
     netG = PoseTransformer(opt).to(device)
-    if opt.pretrained_path:
-        netG_state_dict = torch.load(opt.pretrained_path, map_location=device)
-        netG_state_dict = netG_state_dict['netG_state_dict']
-        netG.load_state_dict(netG_state_dict, strict=False)
-    netD = Discriminator().to(device)
     perceptual_loss = VGGLoss().to(device)
     
     optimG = torch.optim.Adam(netG.parameters(), lr=opt.learning_rate_G, betas=opt.betas)
-    optimD = torch.optim.Adam(netD.parameters(), lr=opt.learning_rate_D, betas=opt.betas)
     milestones = opt.milestones
     schedulerG = torch.optim.lr_scheduler.MultiStepLR(optimG, milestones=milestones, gamma=0.5)
-    schedulerD = torch.optim.lr_scheduler.MultiStepLR(optimD, milestones=milestones, gamma=0.5)
     
     if opt.dataset_type=='fashion':
         train_dataset = DeepFashionTrainDataset(res=(256,256), pose_res=(256,256), dataset_path=opt.dataset_path)
@@ -75,38 +68,18 @@ def train(opt_path):
             P1, P2, map1, map2, P1_path, P2_path = data_dict.values()
             P1, P2, map1, map2 = P1.to(device), P2.to(device), map1.to(device), map2.to(device)
             b_size = P1.size(0)
-            
-            # Training D
-            netD.zero_grad()
-            logits_real = netD(P2)
-            loss_D_real = -logits_real.mean()
-            
+
+            # Training G
+            netG.zero_grad()
             fake = netG(P1,map1,map2)
             fake_img = fake.sigmoid()
-            logits_fake = netD(fake_img.detach())
-            loss_D_fake = logits_fake.mean()
+            l1_loss = opt.coef_l1*F.l1_loss(fake_img, P2)
+            ploss, sloss = perceptual_loss(fake_img, P2)
+            ploss, sloss = opt.coef_perc*ploss, opt.coef_style*sloss
+            loss_G = l1_loss + ploss + sloss
             
-            gp = gradient_penalty(netD, P2, fake_img)
-            
-            loss_D = loss_D_real + loss_D_fake + opt.coef_gp*gp
-            
-            loss_D.backward(retain_graph=True)
-            optimD.step()
-            schedulerD.step()
-            
-            # Training G
-            if total_step%1==0:
-                netG.zero_grad()
-                logits_fake = netD(fake_img)
-                # adv_loss = adversarial_loss.generator_loss(logits_fake)
-                adv_loss = -logits_fake.mean()
-                l1_loss = opt.coef_l1*F.l1_loss(fake_img, P2)
-                ploss, sloss = perceptual_loss(fake_img, P2)
-                ploss, sloss = opt.coef_perc*ploss, opt.coef_style*sloss
-                loss_G = adv_loss + l1_loss + ploss + sloss
-                
-                loss_G.backward()
-                optimG.step()
+            loss_G.backward()
+            optimG.step()
             
             total_step += 1
             
@@ -114,12 +87,8 @@ def train(opt_path):
             
             if total_step%1==0:
                 lr_G = [group['lr'] for group in optimG.param_groups]
-                lr_D = [group['lr'] for group in optimD.param_groups]
                 with open(f'{log_dir}/losses_{model_name}.csv', mode='a', encoding='utf-8') as fp:
-                    txt = f'{total_step},{lr_G[0]},{loss_G.detach().cpu().numpy()},'
-                    txt = txt + f'{lr_D[0]},{loss_D.detach().cpu().numpy()}'
-                    txt = txt + f'loss_D_real: {loss_D_real.detach().cpu().numpy()}'
-                    txt = txt + f'loss_D_fake: {loss_D_fake.detach().cpu().numpy()}\n'
+                    txt = f'{total_step},{lr_G[0]},{loss_G.detach().cpu().numpy()}\n'
                     fp.write(txt)
             
             if total_step%print_freq==0 or total_step==1:
@@ -129,10 +98,8 @@ def train(opt_path):
                 elapsed = datetime.timedelta(seconds=int(time.time()-start_time))
                 eta = datetime.timedelta(seconds=int(rest_step*time_per_step))
                 lg = f'{total_step}/{opt.steps}, Epoch:{e:03}, elepsed: {elapsed}, '
-                lg = lg + f'eta: {eta}, loss_G: {loss_G:f}, adv_term: {adv_loss:f}, '
-                lg = lg + f'l1_term: {l1_loss:f}, p_term: {ploss:f}, s_term: {sloss:f}, '
-                lg = lg + f'loss_D: {loss_D:f}, '
-                lg = lg + f'loss_D_real: {loss_D_real:f}, loss_D_fake: {loss_D_fake:f}'
+                lg = lg + f'eta: {eta}, loss_G: {loss_G:f}, l1_loss: {l1_loss:f}, '
+                lg = lg + f'ploss: {ploss:f}, sloss: {sloss:f}'
                 print(lg)
                 with open(f'{log_dir}/log_{model_name}.log', mode='a', encoding='utf-8') as fp:
                     fp.write(lg+'\n')
@@ -150,6 +117,11 @@ def train(opt_path):
                     with torch.no_grad():
                         fake_val_logits = netG(P1,map1,map2)
                         fake_vals = fake_val_logits.sigmoid()
+                        
+                        l1_loss = opt.coef_l1*F.l1_loss(fake_vals, P2)
+                        ploss, sloss = perceptual_loss(fake_vals, P2)
+                        ploss, sloss = opt.coef_perc*ploss, opt.coef_style*sloss
+                        loss_G_val += (l1_loss + ploss + sloss) / (opt.val_step/opt.batch_size)
                     
                     input_vals = tensor2ndarray(P1)
                     fake_vals = tensor2ndarray(fake_vals)
@@ -191,7 +163,7 @@ def train(opt_path):
                 ssim_fake = ssim_fake / val_step
                 
                 if total_step%eval_freq==0:
-                    txt = f'PSNR: {psnr_fake:f}, SSIM: {ssim_fake:f}'
+                    txt = f'PSNR: {psnr_fake:f}, SSIM: {ssim_fake:f}, loss_G: {loss_G_val:f}'
                     print(txt)
                     with open(f'{log_dir}/log_{model_name}.log', mode='a', encoding='utf-8') as fp:
                         fp.write(txt+'\n')
@@ -203,10 +175,11 @@ def train(opt_path):
                         'PSNR': psnr_fake, 
                         'SSIM': ssim_fake
                     }, os.path.join(model_ckpt_dir, f'{model_name}_{total_step:06}.ckpt'))
-                    
+            
             if total_step==opt.steps:
                 print('Completed.')
                 exit()
+        
 
 if __name__=='__main__':
     torch.backends.cudnn.benchmark = True

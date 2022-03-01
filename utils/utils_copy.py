@@ -9,9 +9,9 @@ def load_option(opt_path):
         return json_obj
 
 def tensor2ndarray(tensor):
-    # Pytorch Tensor (1, C, H, W), [0, 1] -> ndarray (H, W, C) [0, 255]
-    img = tensor.detach().squeeze(0)
-    img = img.cpu().permute(1,2,0).numpy()
+    # Pytorch Tensor (B, C, H, W), [0, 1] -> ndarray (B, H, W, C) [0, 255]
+    img = tensor.detach()
+    img = img.cpu().permute(0,2,3,1).numpy()
     img = np.clip(img, a_min=0, a_max=1.0)
     img = (img*255).astype(np.uint8)
     return img
@@ -87,3 +87,4 @@ def bins_to_labels(bins, num_symbols_per_channel):
         bins = torch.fmod(bins, factor)
         factor = factor // num_symbols_per_channel
     return torch.stack(labels, dim=1)
+
