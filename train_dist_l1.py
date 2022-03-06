@@ -13,7 +13,7 @@ import datetime
 import shutil
 from easydict import EasyDict
 
-from model.pose_transformer_adain import PoseTransformer
+from model.pose_transformer import PoseTransformer
 from model.discriminator import Discriminator
 from dataloader import DeepFashionTrainDataset, DeepFashionValDataset
 from dataloader import Market1501TrainDataset, Market1501ValDataset

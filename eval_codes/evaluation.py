@@ -1,7 +1,7 @@
 import glob
 import os
+import argparse
 
-from torch import real
 import torch
 from torch import nn
 from torch.nn import functional as F
@@ -16,7 +16,7 @@ from easydict import EasyDict
 from utils.utils import tensor2ndarray, load_option
 from utils.pose_utils import draw_pose_from_map
 from dataloader import DeepFashionValDataset, Market1501ValDataset
-from model.pose_transformer_adain import PoseTransformer
+from model.pose_transformer import PoseTransformer
 from metrics import calculate_psnr, calculate_ssim
 from skimage.metrics import structural_similarity
 import lpips
@@ -91,9 +91,13 @@ def evaluation(batch_size, checkpoint_path):
         
 
 if __name__=='__main__':
-    opt_path = 'experiments/fashion_fine_l1_p_s_drop/config_fashion.json'
-    # batch_size = 64
-    # checkpoint_path = 'experiments/fashion_fine_l1_p_s_drop/ckpt/fashion_fine_l1_p_s_drop_100000.ckpt'
-    gen_path = 'results/fashion_fine_l1_p_s_drop/generated'
-    gt_path = 'results/fashion_fine_l1_p_s_drop/GT'
-    eval_from_image(opt_path, gen_path, gt_path)
+    parser = argparse.ArgumentParser(description='A script of evaluate metrics.')
+    parser.add_argument('-c', '--config', required=True, help='Path of config file')
+    args = parser.parse_args()
+    
+    model_name = args.fine.name
+    
+    gen_path = f'results/{model_name}/generated'
+    gt_path = f'results/{model_name}/GT'
+
+    eval_from_image(args.config, gen_path, gt_path)

@@ -5,11 +5,12 @@ from torch.nn import functional as F
 import torch.utils.data
 from PIL import Image
 from tqdm import tqdm
+import argparse
 
 from utils.utils import tensor2ndarray, load_option
 from utils.pose_utils import draw_pose_from_map
 from dataloader import DeepFashionValDataset, Market1501ValDataset
-from model.pose_transformer_adain import PoseTransformer
+from model.pose_transformer import PoseTransformer
 from easydict import EasyDict
 
 def generate_images(opt_path, batch_size, checkpoint_path, out_path):
@@ -76,8 +77,15 @@ def generate_images(opt_path, batch_size, checkpoint_path, out_path):
             
 
 if __name__=='__main__':
-    opt_path = 'experiments/fashion_fine_l1_p_s_drop/config_fashion.json'
-    batch_size = 64
-    checkpoint_path = 'experiments/fashion_fine_l1_p_s_drop/ckpt/fashion_fine_l1_p_s_drop_100000.ckpt'
-    out_path = 'results/fashion_fine_l1_p_s_drop'
-    generate_images(opt_path, batch_size, checkpoint_path, out_path)
+    parser = argparse.ArgumentParser(description='A script of generate images.')
+    parser.add_argument('-c', '--config', required=True, help='Path of config file')
+    args = parser.parse_args()
+    
+    batch_size = 32
+    
+    model_name = args.fine.name
+    checkpoint_path = os.path.join('experiments', model_name, 'ckpt', f'{model_name}_100000.ckpt')
+    
+    out_path = f'results/{model_name}'
+    
+    generate_images(args.config, batch_size, checkpoint_path, out_path)

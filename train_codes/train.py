@@ -1,32 +1,44 @@
+import argparse
+import datetime
+import os
+import random
+import shutil
+import time
+
+import lpips
+import numpy as np
 import torch
 import torch.utils
-from torch import nn
-from torch.nn import functional as F
-import os
-import time
-from PIL import Image
-import datetime
-import shutil
 from easydict import EasyDict
+from PIL import Image
+from torch.nn import functional as F
 
-from model.pose_transformer_adain import PoseTransformer
-from model.discriminator import Discriminator
 from dataloader import DeepFashionTrainDataset, DeepFashionValDataset
 from dataloader import Market1501TrainDataset, Market1501ValDataset
-from utils.utils import tensor2ndarray, load_option
-from utils.pose_utils import draw_pose_from_map, press_pose
+from losses import VGGLoss, gradient_penalty
 from metrics import calculate_psnr, calculate_ssim
-from losses import GANLoss, gradient_penalty, VGGLoss
+from model.discriminator import Discriminator
+from model.pose_transformer import PoseTransformer
+from utils.pose_utils import draw_pose_from_map
+from utils.utils import load_option, tensor2ndarray
 
 
 def train(opt_path):
+    opt = EasyDict(load_option(opt_path))
+    
+    random.seed(opt.fine.seed)
+    np.random.seed(opt.fine.seed)
+    torch.manual_seed(opt.fine.seed)
+    if opt.fine.reproducibility:
+        torch.backends.cudnn.benchmark = False
+        torch.backends.cudnn.deterministic = True
+    
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
     
-    opt = EasyDict(load_option(opt_path))
-    model_name = opt.name
-    batch_size = opt.batch_size
-    print_freq = opt.print_freq
-    eval_freq = opt.eval_freq
+    model_name = opt.fine.name
+    batch_size = opt.fine.batch_size
+    print_freq = opt.fine.print_freq
+    eval_freq = opt.fine.eval_freq
     
     model_ckpt_dir = f'./experiments/{model_name}/ckpt'
     image_out_dir = f'./experiments/{model_name}/generated'
@@ -35,24 +47,28 @@ def train(opt_path):
     os.makedirs(image_out_dir, exist_ok=True)
     os.makedirs(log_dir, exist_ok=True)
     with open(f'{log_dir}/log_{model_name}.log', mode='w', encoding='utf-8') as fp:
-        fp.write(f'')
-    with open(f'{log_dir}/losses_{model_name}.csv', mode='w', encoding='utf-8') as fp:
         fp.write('')
+    with open(f'{log_dir}/train_losses_{model_name}.csv', mode='w', encoding='utf-8') as fp:
+        fp.write('step,lr_D,loss_D,loss_D_real,loss_D_fake,gp,lr_G,loss_G,advloss,l1loss,ploss,sloss\n')
+    with open(f'{log_dir}/test_losses_{model_name}.csv', mode='w', encoding='utf-8') as fp:
+        fp.write('step,psnr,ssim,lpips\n')
     
     shutil.copy(opt_path, f'./experiments/{model_name}/{os.path.basename(opt_path)}')
+    
     netG = PoseTransformer(opt).to(device)
-    if opt.pretrained_path:
-        netG_state_dict = torch.load(opt.pretrained_path, map_location=device)
+    if opt.fine.pretrained_path:
+        netG_state_dict = torch.load(opt.fine.pretrained_path, map_location=device)
         netG_state_dict = netG_state_dict['netG_state_dict']
         netG.load_state_dict(netG_state_dict, strict=False)
     netD = Discriminator().to(device)
     perceptual_loss = VGGLoss().to(device)
+    loss_fn_alex = lpips.LPIPS(net='alex').to(device)
+    loss_fn_alex.eval()
     
-    optimG = torch.optim.Adam(netG.parameters(), lr=opt.learning_rate_G, betas=opt.betas)
-    optimD = torch.optim.Adam(netD.parameters(), lr=opt.learning_rate_D, betas=opt.betas)
-    milestones = opt.milestones
-    schedulerG = torch.optim.lr_scheduler.MultiStepLR(optimG, milestones=milestones, gamma=0.5)
-    schedulerD = torch.optim.lr_scheduler.MultiStepLR(optimD, milestones=milestones, gamma=0.5)
+    optimG = torch.optim.Adam(netG.parameters(), lr=opt.fine.learning_rate_G, betas=opt.fine.betas)
+    optimD = torch.optim.Adam(netD.parameters(), lr=opt.fine.learning_rate_D, betas=opt.fine.betas)
+    schedulerG = torch.optim.lr_scheduler.MultiStepLR(optimG, milestones=opt.fine.milestones, gamma=0.5)
+    schedulerD = torch.optim.lr_scheduler.MultiStepLR(optimD, milestones=opt.fine.milestones, gamma=0.5)
     
     if opt.dataset_type=='fashion':
         train_dataset = DeepFashionTrainDataset(res=(256,256), pose_res=(256,256), dataset_path=opt.dataset_path)
@@ -86,9 +102,9 @@ def train(opt_path):
             logits_fake = netD(fake_img.detach())
             loss_D_fake = logits_fake.mean()
             
-            gp = gradient_penalty(netD, P2, fake_img)
+            gp = opt.fine.coef_gp*gradient_penalty(netD, P2, fake_img)
             
-            loss_D = loss_D_real + loss_D_fake + opt.coef_gp*gp
+            loss_D = loss_D_real + loss_D_fake + gp
             
             loss_D.backward(retain_graph=True)
             optimD.step()
@@ -98,12 +114,11 @@ def train(opt_path):
             if total_step%1==0:
                 netG.zero_grad()
                 logits_fake = netD(fake_img)
-                # adv_loss = adversarial_loss.generator_loss(logits_fake)
-                adv_loss = -logits_fake.mean()
-                l1_loss = opt.coef_l1*F.l1_loss(fake_img, P2)
+                advloss = -logits_fake.mean()
+                l1loss = opt.fine.coef_l1*F.l1_loss(fake_img, P2)
                 ploss, sloss = perceptual_loss(fake_img, P2)
-                ploss, sloss = opt.coef_perc*ploss, opt.coef_style*sloss
-                loss_G = adv_loss + l1_loss + ploss + sloss
+                ploss, sloss = opt.fine.coef_perc*ploss, opt.fine.coef_style*sloss
+                loss_G = advloss + l1loss + ploss + sloss
                 
                 loss_G.backward()
                 optimG.step()
@@ -115,41 +130,41 @@ def train(opt_path):
             if total_step%1==0:
                 lr_G = [group['lr'] for group in optimG.param_groups]
                 lr_D = [group['lr'] for group in optimD.param_groups]
-                with open(f'{log_dir}/losses_{model_name}.csv', mode='a', encoding='utf-8') as fp:
-                    txt = f'{total_step},{lr_G[0]},{loss_G.detach().cpu().numpy()},'
-                    txt = txt + f'{lr_D[0]},{loss_D.detach().cpu().numpy()}'
-                    txt = txt + f'loss_D_real: {loss_D_real.detach().cpu().numpy()}'
-                    txt = txt + f'loss_D_fake: {loss_D_fake.detach().cpu().numpy()}\n'
+                with open(f'{log_dir}/train_losses_{model_name}.csv', mode='a', encoding='utf-8') as fp:
+                    txt = f'{total_step},{lr_D[0]},{loss_D:f},{loss_D_real:f},{loss_D_fake:f},{gp:f},'
+                    txt = txt + f'{lr_G[0]},{loss_G:f},{advloss:f},{l1loss:f},{ploss:f},{sloss:f}\n'
                     fp.write(txt)
             
             if total_step%print_freq==0 or total_step==1:
-                rest_step = opt.steps-total_step
+                rest_step = opt.fine.steps-total_step
                 time_per_step = int(time.time()-start_time) / total_step
 
                 elapsed = datetime.timedelta(seconds=int(time.time()-start_time))
                 eta = datetime.timedelta(seconds=int(rest_step*time_per_step))
-                lg = f'{total_step}/{opt.steps}, Epoch:{e:03}, elepsed: {elapsed}, '
-                lg = lg + f'eta: {eta}, loss_G: {loss_G:f}, adv_term: {adv_loss:f}, '
-                lg = lg + f'l1_term: {l1_loss:f}, p_term: {ploss:f}, s_term: {sloss:f}, '
+                lg = f'{total_step}/{opt.fine.steps}, Epoch:{e:03}, elepsed: {elapsed}, eta: {eta}, '
                 lg = lg + f'loss_D: {loss_D:f}, '
-                lg = lg + f'loss_D_real: {loss_D_real:f}, loss_D_fake: {loss_D_fake:f}'
+                lg = lg + f'loss_D_real: {loss_D_real:f}, loss_D_fake: {loss_D_fake:f}, gp: {gp:f}, '
+                lg = lg + f'loss_G: {loss_G:f}, advloss: {advloss:f}, '
+                lg = lg + f'l1loss: {l1loss:f}, ploss: {ploss:f}, sloss: {sloss:f}'
                 print(lg)
                 with open(f'{log_dir}/log_{model_name}.log', mode='a', encoding='utf-8') as fp:
                     fp.write(lg+'\n')
             
-            if total_step%eval_freq==0 or total_step%len(train_loader)==0:
+            if total_step%eval_freq==0:
                 # Validation
                 netG.eval()
                 val_step = 1
                 psnr_fake = 0.0
                 ssim_fake = 0.0
-                loss_G_val = 0.0
+                lpips_val = 0.0
                 for j, val_data_dict in enumerate(val_loader):
                     P1, P2, map1, map2, P1_path, P2_path = val_data_dict.values()
                     P1, P2, map1, map2 = P1.to(device), P2.to(device), map1.to(device), map2.to(device)
                     with torch.no_grad():
                         fake_val_logits = netG(P1,map1,map2)
                         fake_vals = fake_val_logits.sigmoid()
+                
+                    lpips_val += loss_fn_alex(fake_vals, P2, normalize=True).sum()
                     
                     input_vals = tensor2ndarray(P1)
                     fake_vals = tensor2ndarray(fake_vals)
@@ -159,16 +174,15 @@ def train(opt_path):
                         if total_step%eval_freq==0:
                             os.makedirs(os.path.join(image_out_dir, f'{total_step:06}'), exist_ok=True)
                             psnr_fake += calculate_psnr(
-                                fake_vals[b,:,:,:], real_vals[b,:,:,:], crop_border=4, test_y_channel=False)
+                                fake_vals[b,:,:,:], real_vals[b,:,:,:], crop_border=4, test_y_channel=True)
                             ssim_fake += calculate_ssim(
-                                fake_vals[b,:,:,:], real_vals[b,:,:,:], crop_border=4, test_y_channel=False)
+                                fake_vals[b,:,:,:], real_vals[b,:,:,:], crop_border=4, test_y_channel=True)
                             
+                            # Visualization
                             mp1 = map1[b,:,:,:].detach().cpu().permute(1,2,0).numpy()
                             mp1, _ = draw_pose_from_map(mp1)
-                            # mp1 = press_pose(mp1)
                             mp2 = map2[b,:,:,:].detach().cpu().permute(1,2,0).numpy()
                             mp2, _ = draw_pose_from_map(mp2)
-                            # mp2 = press_pose(mp2)
 
                             input_val = Image.fromarray(input_vals[b,:,:,:])
                             mp1 = Image.fromarray(mp1)
@@ -184,31 +198,36 @@ def train(opt_path):
                             img.save(os.path.join(image_out_dir, f'{total_step:06}', f'{j:03}_{b:02}.jpg'), 'JPEG')
 
                         val_step += 1
-                        if val_step==opt.val_step: break
-                    if val_step==opt.val_step: break
+                        if val_step==opt.fine.val_step: break
+                    if val_step==opt.fine.val_step: break
 
                 psnr_fake = psnr_fake / val_step
                 ssim_fake = ssim_fake / val_step
+                lpips_val = lpips_val / val_step
                 
-                if total_step%eval_freq==0:
-                    txt = f'PSNR: {psnr_fake:f}, SSIM: {ssim_fake:f}'
-                    print(txt)
-                    with open(f'{log_dir}/log_{model_name}.log', mode='a', encoding='utf-8') as fp:
-                        fp.write(txt+'\n')
+                txt = f'PSNR: {psnr_fake:f}, SSIM: {ssim_fake:f}, LPIPS: {lpips_val:f}'
+                print(txt)
+                with open(f'{log_dir}/log_{model_name}.log', mode='a', encoding='utf-8') as fp:
+                    fp.write(txt+'\n')
+                with open(f'{log_dir}/test_losses_{model_name}.csv', mode='a', encoding='utf-8') as fp:
+                    fp.write(f'{total_step},{psnr_fake:f},{ssim_fake:f},{lpips_val:f}\n')
 
-                    torch.save({
-                        'total_step': total_step,
-                        'netG_state_dict': netG.state_dict(),
-                        'optimG_state_dict': optimG.state_dict(),
-                        'PSNR': psnr_fake, 
-                        'SSIM': ssim_fake
-                    }, os.path.join(model_ckpt_dir, f'{model_name}_{total_step:06}.ckpt'))
+                torch.save({
+                    'total_step': total_step,
+                    'netG_state_dict': netG.state_dict(),
+                    'optimG_state_dict': optimG.state_dict(),
+                    'PSNR': psnr_fake, 
+                    'SSIM': ssim_fake
+                }, os.path.join(model_ckpt_dir, f'{model_name}_{total_step:06}.ckpt'))
                     
-            if total_step==opt.steps:
+            if total_step==opt.fine.steps:
                 print('Completed.')
                 exit()
+                
 
 if __name__=='__main__':
-    torch.backends.cudnn.benchmark = True
-    opt_path = 'config/config_market2.json'
-    train(opt_path)
+    parser = argparse.ArgumentParser(description='A script of training network with adversarial loss.')
+    parser.add_argument('-c', '--config', required=True, help='Path of config file')
+    args = parser.parse_args()
+    
+    train(args.config)
