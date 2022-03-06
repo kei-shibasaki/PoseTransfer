@@ -2,6 +2,7 @@ import json
 import os
 import numpy as np
 import torch
+import requests
 
 def load_option(opt_path):
     with open(opt_path, 'r') as json_file:
@@ -15,3 +16,9 @@ def tensor2ndarray(tensor):
     img = np.clip(img, a_min=0, a_max=1.0)
     img = (img*255).astype(np.uint8)
     return img
+    
+def send_line_notify(line_notify_token, nortification_message):
+    line_notify_api = 'https://notify-api.line.me/api/notify'
+    headers = {'Authorization': f'Bearer {line_notify_token}'}
+    data = {'message': f'{nortification_message}'}
+    requests.post(line_notify_api, headers=headers, data=data)

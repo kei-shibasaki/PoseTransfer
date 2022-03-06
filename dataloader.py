@@ -1,6 +1,8 @@
+from cv2 import transform
 import torch
 import torch.utils.data
 from torchvision import transforms
+import torchvision
 import numpy as np
 import json
 import glob
@@ -239,3 +241,26 @@ class Market1501ValDataset(torch.utils.data.Dataset):
         
         return {'P1': P1, 'P2': P2, 'map1': ann_P1, 'map2': ann_P2, 
                 'P1_path': P1_path, 'P2_path': P2_path}
+
+class SimpleImageDataset(torch.utils.data.Dataset):
+    def __init__(self, image_path, resolution=(256, 256), normalize=False):
+        super(SimpleImageDataset, self).__init__()
+        self.images = sorted(glob.glob(os.path.join(image_path, '*.jpg')))
+        self.normalize = normalize
+        self.transform = transforms.Compose([
+            transforms.Resize(resolution), 
+            transforms.ToTensor()
+        ])
+        self.mean = torch.Tensor([0.485, 0.456, 0.406])
+        self.std = torch.Tensor([0.229, 0.224, 0.225])
+    
+    def __getitem__(self, idx):
+        img = Image.open(self.images[idx])
+        img = self.transform(img)
+        if self.normalize:
+            img = torchvision.transforms.functional(img, self.mean, self.std)
+
+        return img
+    
+    def __len__(self):
+        return len(self.images)

@@ -1,5 +1,6 @@
 import argparse
 import datetime
+import json
 import os
 import random
 import shutil
@@ -20,7 +21,7 @@ from metrics import calculate_psnr, calculate_ssim
 from model.discriminator import Discriminator
 from model.pose_transformer import PoseTransformer
 from utils.pose_utils import draw_pose_from_map
-from utils.utils import load_option, tensor2ndarray
+from utils.utils import load_option, tensor2ndarray, send_line_notify
 
 
 def train(opt_path):
@@ -217,10 +218,16 @@ def train(opt_path):
                     'netG_state_dict': netG.state_dict(),
                     'optimG_state_dict': optimG.state_dict(),
                     'PSNR': psnr_fake, 
-                    'SSIM': ssim_fake
+                    'SSIM': ssim_fake,
+                    'LPIPS': lpips_val,
                 }, os.path.join(model_ckpt_dir, f'{model_name}_{total_step:06}.ckpt'))
                     
             if total_step==opt.fine.steps:
+                if opt.enable_line_nortify:
+                    with open('line_nortify_token.json', 'r', encoding='utf-8') as fp:
+                        token = json.load(fp)['token']
+                    send_line_notify(token, f'Complete training {opt.fine.name}.')
+                
                 print('Completed.')
                 exit()
                 

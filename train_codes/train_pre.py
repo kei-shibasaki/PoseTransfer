@@ -1,5 +1,6 @@
 import argparse
 import datetime
+import json
 import os
 import random
 import shutil
@@ -19,7 +20,7 @@ from losses import VGGLoss
 from metrics import calculate_psnr, calculate_ssim
 from model.pose_transformer import PoseTransformer
 from utils.pose_utils import draw_pose_from_map
-from utils.utils import load_option, tensor2ndarray
+from utils.utils import load_option, tensor2ndarray, send_line_notify
 
 
 def train(opt_path):
@@ -190,7 +191,7 @@ def train(opt_path):
                 with open(f'{log_dir}/log_{model_name}.log', mode='a', encoding='utf-8') as fp:
                     fp.write(txt+'\n')
                 with open(f'{log_dir}/test_losses_{model_name}.csv', mode='a', encoding='utf-8') as fp:
-                    fp.write(f'{total_step},{total_step},{loss_G_val:f},{psnr_fake:f},{ssim_fake:f},{lpips_val:f}\n')
+                    fp.write(f'{total_step},{loss_G_val:f},{psnr_fake:f},{ssim_fake:f},{lpips_val:f}\n')
 
                 torch.save({
                     'total_step': total_step,
@@ -201,6 +202,11 @@ def train(opt_path):
                 }, os.path.join(model_ckpt_dir, f'{model_name}_{total_step:06}.ckpt'))
             
             if total_step==opt.pre.steps:
+                if opt.enable_line_nortify:
+                    with open('line_nortify_token.json', 'r', encoding='utf-8') as fp:
+                        token = json.load(fp)['token']
+                    send_line_notify(token, f'Complete training {opt.pre.name}.')
+                
                 print('Completed.')
                 exit()
         

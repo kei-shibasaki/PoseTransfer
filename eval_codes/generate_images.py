@@ -13,9 +13,8 @@ from dataloader import DeepFashionValDataset, Market1501ValDataset
 from model.pose_transformer import PoseTransformer
 from easydict import EasyDict
 
-def generate_images(opt_path, batch_size, checkpoint_path, out_path):
+def generate_images(opt, batch_size, checkpoint_path, out_path):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    opt = EasyDict(load_option(opt_path))
     os.makedirs(os.path.join(out_path, 'generated'), exist_ok=True)
     os.makedirs(os.path.join(out_path, 'GT'), exist_ok=True)
     os.makedirs(os.path.join(out_path, 'comparison'), exist_ok=True)
@@ -79,13 +78,20 @@ def generate_images(opt_path, batch_size, checkpoint_path, out_path):
 if __name__=='__main__':
     parser = argparse.ArgumentParser(description='A script of generate images.')
     parser.add_argument('-c', '--config', required=True, help='Path of config file')
+    parser.add_argument('-m', '--mode', default='fine', choices=['pre', 'fine'], help='log mode pre/fine')
+    parser.add_argument('-b', '--batch_size', default=32, help='Batch size')
     args = parser.parse_args()
+    opt = EasyDict(load_option(args.config))
     
     batch_size = 32
     
-    model_name = args.fine.name
-    checkpoint_path = os.path.join('experiments', model_name, 'ckpt', f'{model_name}_100000.ckpt')
+    if args.mode=='fine':
+        model_name = opt.fine.name
+        checkpoint_path = os.path.join('experiments', model_name, 'ckpt', f'{model_name}_{opt.fine.steps}.ckpt')
+    else:
+        model_name = opt.pre.name
+        checkpoint_path = os.path.join('experiments', model_name, 'ckpt', f'{model_name}_{opt.pre.steps}.ckpt')
     
     out_path = f'results/{model_name}'
     
-    generate_images(args.config, batch_size, checkpoint_path, out_path)
+    generate_images(opt, batch_size, checkpoint_path, out_path)

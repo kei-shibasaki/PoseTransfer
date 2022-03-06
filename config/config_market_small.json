@@ -1,6 +1,7 @@
 {
     "dataset_type": "market",
     "dataset_path": "./dataset/market/",
+    "enable_line_nortify": true,
     "pre": {
         "name": "market_small_pre",
         "reproducibility": false,

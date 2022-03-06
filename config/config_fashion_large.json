@@ -1,6 +1,7 @@
 {
     "dataset_type": "fashion",
     "dataset_path": "./dataset/fashion/",
+    "enable_line_nortify": true,
     "pre": {
         "name": "fashion_large_pre",
         "reproducibility": false,
