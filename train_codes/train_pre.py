@@ -192,6 +192,11 @@ def train(opt_path):
                     fp.write(txt+'\n')
                 with open(f'{log_dir}/test_losses_{model_name}.csv', mode='a', encoding='utf-8') as fp:
                     fp.write(f'{total_step},{loss_G_val:f},{psnr_fake:f},{ssim_fake:f},{lpips_val:f}\n')
+                
+                if total_step%(50*eval_freq)==0 and opt.enable_line_nortify:
+                    with open('line_nortify_token.json', 'r', encoding='utf-8') as fp:
+                        token = json.load(fp)['token']
+                    send_line_notify(token, f'{opt.pre.name} Step: {total_step}\n{lg}\n{txt}')
 
                 torch.save({
                     'total_step': total_step,

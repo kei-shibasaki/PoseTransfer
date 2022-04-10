@@ -3,6 +3,7 @@ import os
 import numpy as np
 import torch
 import requests
+import pandas as pd
 
 def load_option(opt_path):
     with open(opt_path, 'r') as json_file:
@@ -22,3 +23,23 @@ def send_line_notify(line_notify_token, nortification_message):
     headers = {'Authorization': f'Bearer {line_notify_token}'}
     data = {'message': f'{nortification_message}'}
     requests.post(line_notify_api, headers=headers, data=data)
+
+def get_best_checkpoint(experiment_dir, metrics):
+    assert metrics in ['loss_G', 'PSNR', 'SSIM', 'LPIPS']
+    model_name = os.path.basename(experiment_dir)
+    ckpt_dir = os.path.join(experiment_dir, 'ckpt')
+    log_dir = os.path.join(experiment_dir, 'logs')
+    test_log = pd.read_csv(os.path.join(log_dir, f'test_losses_{model_name}.csv'))
+    
+    if metrics=='loss_G':
+        best_step = test_log.loc[test_log['loss_G'].idxmin(), 'step']
+    elif metrics=='PSNR':
+        best_step = test_log.loc[test_log['psnr'].idxmax(), 'step']
+    elif metrics=='SSIM':
+        best_step = test_log.loc[test_log['ssim'].idxmax(), 'step']
+    else:
+        best_step = test_log.loc[test_log['lpips'].idxmin(), 'step']
+    
+    ckpt_path = os.path.join(ckpt_dir, f'{model_name}_{best_step:06}.ckpt')
+    
+    return ckpt_path

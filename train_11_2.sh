@@ -1,7 +1,7 @@
-DEVICE=3
-CONFIG_FILE="config/config_market_short.json"
-LOGDIR_PRE="results/market_short_pre"
-LOGDIR_FINE="results/market_short_fine"
+DEVICE=2
+CONFIG_FILE="config/config_fashion_large_drop_long.json"
+LOGDIR_PRE="results/fashion_large_drop_long_pre"
+LOGDIR_FINE="results/fashion_large_drop_long_fine"
 
 CUDA_VISIBLE_DEVICES=$DEVICE python -m train_codes.train_pre --config $CONFIG_FILE
 CUDA_VISIBLE_DEVICES=$DEVICE python -m train_codes.train_fine --config $CONFIG_FILE

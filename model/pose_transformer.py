@@ -23,7 +23,8 @@ class ResBlock(nn.Module):
         x = self.cnn(x)
         x = self.norm(x)
         x = self.relu(x)
-        return a + x
+        x = a + x
+        return x
 
 class ShallowFeatureExtraction(nn.Module):
     def __init__(self, opt):
@@ -90,10 +91,11 @@ class CNNTransformation(nn.Module):
         stat_ksize = opt.to_stat.ksizes[idx]
         
         self.to_stat = nn.Sequential(
-            ChannelAttention(stat_dim, reduction=16),
+            # ChannelAttention(stat_dim, reduction=16),
             nn.Conv2d(stat_dim, dim, stat_ksize, padding=stat_ksize//2),
+            ChanLayerNorm(dim), 
             nn.ReLU(inplace=True),
-            ChannelAttention(dim, reduction=16),
+            # ChannelAttention(dim, reduction=16),
             nn.Conv2d(dim, dim, stat_ksize, padding=stat_ksize//2), 
             ChanLayerNorm(dim), 
             nn.ReLU(inplace=True))
@@ -186,7 +188,8 @@ class Decoder(nn.Module):
             self.layers.append(AxialTransformerDecoderBlock(dim, heads=heads, mlp_ratio=mlp_ratio, dropout=drop))
         
     def forward(self, pose, encoded):
-        x = self.cpe(self.expand_dims(pose))
+        x = self.expand_dims(pose)
+        x = self.cpe(x)
         for layer in self.layers:
             x = layer(x, encoded)
         return x
@@ -240,6 +243,7 @@ class PoseTransformer(nn.Module):
                 feature = torch.cat([img_pyr[i], feature], dim=1)
                 feature = layer(feature, p2_pyr[i])
             _, _, h, w = img_pyr[i+1].shape
+            # avoiding error in concatenating feature with odd size
             feature = F.interpolate(feature, size=(h,w), mode='bilinear', align_corners=False)
         
         for i in range(self.n_cnn_trans):
@@ -247,6 +251,7 @@ class PoseTransformer(nn.Module):
             feature = layer(img_pyr[i+self.n_at_trans], feature)
             if i!=self.n_cnn_trans-1:
                 _, _, h, w = img_pyr[i+self.n_at_trans+1].shape
+                # avoiding error in concatenating feature with odd size
                 feature = F.interpolate(feature, size=(h,w), mode='bilinear', align_corners=False)
         
         logits = self.to_out(feature)

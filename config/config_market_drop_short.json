@@ -1,0 +1,75 @@
+{
+    "dataset_type": "market",
+    "dataset_path": "./dataset/market/",
+    "enable_line_nortify": true,
+    "pre": {
+        "name": "market_drop_short_pre",
+        "reproducibility": false,
+        "seed": 0,
+        "n_gpu": 1,
+        "steps": 100000,
+        "batch_size": 8,
+        "milestones": [50000, 80000],
+        "learning_rate_G": 1e-4,
+        "betas": [0.5, 0.999], 
+        "coef_l1": 2.5,
+        "coef_perc": 0.25,
+        "coef_style": 250,
+        "print_freq": 100,
+        "eval_freq": 1000,
+        "val_step": 100,
+        "pretrained_path": null
+    }, 
+    "fine": {
+        "name": "market_drop_short_fine",
+        "reproducibility": false,
+        "seed": 0,
+        "n_gpu": 1,
+        "steps": 100000,
+        "batch_size": 8,
+        "milestones": [50000, 80000],
+        "learning_rate_G": 1e-5,
+        "learning_rate_D": 1e-4,
+        "betas": [0.5, 0.999], 
+        "coef_l1": 2.5,
+        "coef_perc": 0.25,
+        "coef_style": 250,
+        "coef_gp": 10,
+        "print_freq": 100,
+        "eval_freq": 1000,
+        "val_step": 100,
+        "pretrained_path": "_bestpoint",
+        "bestpoint_metrics": "loss_G"
+    },
+
+    "color_channels": 3,
+    "pose_channels": 18,
+
+    "level": 5,
+    "n_cnn_trans": 4,
+    "n_at_trans": 2, 
+    "dims": [32, 32, 64, 64, 128],
+
+    "feature_extraction": {
+        "depths": [2, 2, 2, 4, 4],
+        "ksizes": [7, 7, 5, 3, 3]
+    },
+
+    "cnn_trans": {
+        "depths": [4, 4, 2, 2],
+        "ksizes": [3, 5, 7, 7]
+    }, 
+
+    "to_stat": {
+        "ksizes": [3, 5, 7, 7]
+    },
+
+    "at_trans": {
+        "heads": [8, 8], 
+        "mlp_ratios": [2, 2],
+        "drops": [0.1, 0.1], 
+        "cpe_ksizes": [3, 5], 
+        "encoder_depths": [6, 4], 
+        "decoder_depths": [6, 4]
+    }
+}

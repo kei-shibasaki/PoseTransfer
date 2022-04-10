@@ -21,7 +21,7 @@ from metrics import calculate_psnr, calculate_ssim
 from model.discriminator import Discriminator
 from model.pose_transformer import PoseTransformer
 from utils.pose_utils import draw_pose_from_map
-from utils.utils import load_option, tensor2ndarray, send_line_notify
+from utils.utils import load_option, tensor2ndarray, send_line_notify, get_best_checkpoint
 
 
 def train(opt_path):
@@ -58,7 +58,11 @@ def train(opt_path):
     
     netG = PoseTransformer(opt).to(device)
     if opt.fine.pretrained_path:
-        netG_state_dict = torch.load(opt.fine.pretrained_path, map_location=device)
+        if opt.fine.pretrained_path=='_bestpoint':
+            pretrained_path = get_best_checkpoint(f'./experiments/{opt.pre.name}', metrics=opt.fine.bestpoint_metrics)
+        else:
+            pretrained_path = opt.fine.pretrained_path
+        netG_state_dict = torch.load(pretrained_path, map_location=device)
         netG_state_dict = netG_state_dict['netG_state_dict']
         netG.load_state_dict(netG_state_dict, strict=False)
     netD = Discriminator().to(device)
@@ -72,8 +76,8 @@ def train(opt_path):
     schedulerD = torch.optim.lr_scheduler.MultiStepLR(optimD, milestones=opt.fine.milestones, gamma=0.5)
     
     if opt.dataset_type=='fashion':
-        train_dataset = DeepFashionTrainDataset(res=(256,256), pose_res=(256,256), dataset_path=opt.dataset_path)
-        val_dataset = DeepFashionValDataset(res=(256,256), pose_res=(256,256), dataset_path=opt.dataset_path)
+        train_dataset = DeepFashionTrainDataset(res=(256,128), pose_res=(256,128), dataset_path=opt.dataset_path)
+        val_dataset = DeepFashionValDataset(res=(256,128), pose_res=(256,128), dataset_path=opt.dataset_path)
     elif opt.dataset_type=='market':
         train_dataset = Market1501TrainDataset(res=(128,64), pose_res=(128,64), dataset_path=opt.dataset_path)
         val_dataset = Market1501ValDataset(res=(128,64), pose_res=(128,64), dataset_path=opt.dataset_path)
@@ -212,6 +216,11 @@ def train(opt_path):
                     fp.write(txt+'\n')
                 with open(f'{log_dir}/test_losses_{model_name}.csv', mode='a', encoding='utf-8') as fp:
                     fp.write(f'{total_step},{psnr_fake:f},{ssim_fake:f},{lpips_val:f}\n')
+                
+                if total_step%(50*eval_freq)==0 and opt.enable_line_nortify:
+                    with open('line_nortify_token.json', 'r', encoding='utf-8') as fp:
+                        token = json.load(fp)['token']
+                    send_line_notify(token, f'{opt.fine.name} Step: {total_step}\n{lg}\n{txt}')
 
                 torch.save({
                     'total_step': total_step,

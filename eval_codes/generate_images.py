@@ -83,11 +83,12 @@ if __name__=='__main__':
     args = parser.parse_args()
     opt = EasyDict(load_option(args.config))
     
-    batch_size = 32
+    batch_size = int(args.batch_size)
     
     if args.mode=='fine':
         model_name = opt.fine.name
         checkpoint_path = os.path.join('experiments', model_name, 'ckpt', f'{model_name}_{opt.fine.steps}.ckpt')
+        # checkpoint_path = 'experiments/fashion_large_mod_fine/ckpt/fashion_large_mod_fine_098000.ckpt'
     else:
         model_name = opt.pre.name
         checkpoint_path = os.path.join('experiments', model_name, 'ckpt', f'{model_name}_{opt.pre.steps}.ckpt')
