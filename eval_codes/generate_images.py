@@ -93,16 +93,9 @@ if __name__=='__main__':
     
     batch_size = int(args.batch_size)
     
-<<<<<<< Updated upstream
-    if args.mode=='fine':
-        model_name = opt.fine.name
-        checkpoint_path = os.path.join('experiments', model_name, 'ckpt', f'{model_name}_{opt.fine.steps}.ckpt')
-        # checkpoint_path = 'experiments/fashion_large_mod_fine/ckpt/fashion_large_mod_fine_098000.ckpt'
-=======
     model_name = opt.name
     if args.checkpoint_path==None:
         checkpoint_path = os.path.join('experiments', model_name, 'ckpt', f'{model_name}_{opt.steps}.ckpt')
->>>>>>> Stashed changes
     else:
         checkpoint_path = args.checkpoint_path
     

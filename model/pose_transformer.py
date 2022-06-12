@@ -89,17 +89,9 @@ class CNNTransformation(nn.Module):
         stat_ksize = opt.to_stat.ksizes[idx]
         
         self.to_stat = nn.Sequential(
-<<<<<<< Updated upstream
-            # ChannelAttention(stat_dim, reduction=16),
             nn.Conv2d(stat_dim, dim, stat_ksize, padding=stat_ksize//2),
             ChanLayerNorm(dim), 
             nn.ReLU(inplace=True),
-            # ChannelAttention(dim, reduction=16),
-=======
-            nn.Conv2d(stat_dim, dim, stat_ksize, padding=stat_ksize//2),
-            ChanLayerNorm(dim), 
-            nn.ReLU(inplace=True),
->>>>>>> Stashed changes
             nn.Conv2d(dim, dim, stat_ksize, padding=stat_ksize//2), 
             ChanLayerNorm(dim), 
             nn.ReLU(inplace=True))

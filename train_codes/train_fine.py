@@ -76,13 +76,8 @@ def train(opt_path):
     schedulerD = torch.optim.lr_scheduler.MultiStepLR(optimD, milestones=opt.fine.milestones, gamma=0.5)
     
     if opt.dataset_type=='fashion':
-<<<<<<< Updated upstream
-        train_dataset = DeepFashionTrainDataset(res=(256,128), pose_res=(256,128), dataset_path=opt.dataset_path)
-        val_dataset = DeepFashionValDataset(res=(256,128), pose_res=(256,128), dataset_path=opt.dataset_path)
-=======
         train_dataset = DeepFashionTrainDataset(res=(256,176), pose_res=(256,176), dataset_path=opt.dataset_path)
         val_dataset = DeepFashionValDataset(res=(256,176), pose_res=(256,176), dataset_path=opt.dataset_path)
->>>>>>> Stashed changes
     elif opt.dataset_type=='market':
         train_dataset = Market1501TrainDataset(res=(128,64), pose_res=(128,64), dataset_path=opt.dataset_path)
         val_dataset = Market1501ValDataset(res=(128,64), pose_res=(128,64), dataset_path=opt.dataset_path)

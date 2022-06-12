@@ -40,10 +40,6 @@ def eval_from_image(out_path, gen_path, gt_path):
                 lpips_val += loss_fn_alex(img_gen, img_gt, normalize=True).sum() / n_images
     
         dataset_gen = SimpleImageDataset(gen_path)
-<<<<<<< Updated upstream
-        # dataset_gt = SimpleImageDataset(gt_path)
-=======
->>>>>>> Stashed changes
         
         is_score_gen, _ = inception_score(dataset_gen, cuda=True, batch_size=16, resize=True, splits=10)
 
@@ -60,14 +56,6 @@ if __name__=='__main__':
     opt = EasyDict(load_option(args.config))
     model_name = opt.name
     
-<<<<<<< Updated upstream
-    if args.mode=='pre':
-        model_name = opt.pre.name
-    else:
-        model_name = opt.fine.name
-    
-=======
->>>>>>> Stashed changes
     out_path = f'results/{model_name}'
     gen_path = f'results/{model_name}/generated'
     gt_path = f'results/{model_name}/GT'
