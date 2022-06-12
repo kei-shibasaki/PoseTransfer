@@ -1,7 +1,7 @@
+from cv2 import transform
 import torch
 import torch.utils.data
 from torchvision import transforms
-from torchvision.transforms import functional as TF
 import torchvision
 import numpy as np
 import json
@@ -9,7 +9,6 @@ import glob
 import os
 import pandas as pd
 from PIL import Image
-import random
 
 MISSING_VALUE = -1
 
@@ -21,8 +20,8 @@ def load_pose_cords_from_strings(y_str, x_str):
 def cords_to_map(cords, img_size, old_size=None, affine_matrix=None, sigma=6):
     old_size = img_size if old_size is None else old_size
     cords = cords.astype(float)
-    #print(img_size, cords.shape[0:1])
-    result = np.zeros(list(img_size) + list(cords.shape[0:1]), dtype='float32')
+    # print(img_size, cords.shape[0:1])
+    result = np.zeros(img_size + cords.shape[0:1], dtype='float32')
     for i, point in enumerate(cords):
         if point[0] == MISSING_VALUE or point[1] == MISSING_VALUE:
             continue
@@ -47,7 +46,7 @@ def keypoints2posemap(ann, img_size=(256,256)):
     return posemap
 
 class DeepFashionTrainDataset(torch.utils.data.Dataset):
-    def __init__(self, opt):
+    def __init__(self, res=(256,256), pose_res=(256,256), dataset_path='./dataset/fashion/'):
         '''
         directories or files using for creating dataset
         train_256
@@ -55,41 +54,25 @@ class DeepFashionTrainDataset(torch.utils.data.Dataset):
         fasion-pairs-train.csv
         '''
         super(DeepFashionTrainDataset, self).__init__()
-        self.opt = opt
-        self.res = opt.input_image_resolution
-        self.pose_res = opt.input_pose_resolution
+        self.res = res
+        self.pose_res = pose_res
         
-        self.dataset_path = opt.dataset_path
-        self.annfile = pd.read_csv(os.path.join(self.dataset_path, 'fasion-annotation-train.csv'), sep=':')
+        self.dataset_path = dataset_path
+        self.annfile = pd.read_csv(os.path.join(dataset_path, 'fasion-annotation-train.csv'), sep=':')
         self.annfile = self.annfile.set_index('name')
-        self.pairlist = pd.read_csv(os.path.join(self.dataset_path, 'fasion-pairs-train.csv'), sep=',', index_col=0)
+        self.pairlist = pd.read_csv(os.path.join(dataset_path, 'fasion-pairs-train.csv'), sep=',', index_col=0)
         
-        self.interp_mode_img = torchvision.transforms.InterpolationMode.BICUBIC
-        # ValueError: Interpolation mode 'bicubic' is unsupported with Tensor input
-        self.interp_mode_pose = torchvision.transforms.InterpolationMode.NEAREST
-    
-    def trasnform_images(self, source, target, input_pose, target_pose):
-        a_min, a_max = self.opt.random_rotate_range
-        angle = random.random() * (a_max-a_min) + a_min
-        use_flip = random.random()>0.5 if self.opt.use_random_horizontal_flip else False
-        source = TF.resize(source, self.res, self.interp_mode_img)
-        target = TF.resize(target, self.res, self.interp_mode_img)
-        input_pose = TF.resize(input_pose, self.pose_res, self.interp_mode_pose)
-        target_pose = TF.resize(target_pose, self.pose_res, self.interp_mode_pose)
-        if use_flip:
-            source = TF.hflip(source)
-            target = TF.hflip(target)
-            input_pose = TF.hflip(input_pose)
-            target_pose = TF.hflip(target_pose)
-        source = TF.rotate(source, angle, self.interp_mode_img)
-        target = TF.rotate(target, angle, self.interp_mode_img)
-        input_pose = TF.rotate(input_pose, angle, self.interp_mode_pose)
-        target_pose = TF.rotate(target_pose, angle, self.interp_mode_pose)
-        
-        source = TF.to_tensor(source)
-        target = TF.to_tensor(target)
-        
-        return source, target, input_pose, target_pose
+        self.transform_image_source = transforms.Compose([
+            transforms.Resize(res),
+            transforms.ToTensor(), 
+        ])
+        self.transform_image_target = transforms.Compose([
+            transforms.Resize(res),
+            transforms.ToTensor()
+        ])
+        self.transform_ann = transforms.Compose([
+            transforms.Resize(pose_res)
+        ])
     
     def __len__(self):
         return len(self.pairlist)
@@ -105,13 +88,14 @@ class DeepFashionTrainDataset(torch.utils.data.Dataset):
         ann_P1 = keypoints2posemap(ann_P1, img_size=self.pose_res)
         ann_P2 = keypoints2posemap(ann_P2, img_size=self.pose_res)
         
-        P1, P2, ann_P1, ann_P2 = self.trasnform_images(P1, P2, ann_P1, ann_P2)
+        P1, P2 = self.transform_image_source(P1), self.transform_image_target(P2)
+        ann_P1, ann_P2 = self.transform_ann(ann_P1), self.transform_ann(ann_P2)
         
         return {'P1': P1, 'P2': P2, 'map1': ann_P1, 'map2': ann_P2, 
                 'P1_path': P1_path, 'P2_path': P2_path}
 
 class DeepFashionValDataset(torch.utils.data.Dataset):
-    def __init__(self, opt):
+    def __init__(self, res=(256,256), pose_res=(256,256), dataset_path='./dataset/fashion/'):
         '''
         directories or files using for creating dataset
         test_256
@@ -119,28 +103,25 @@ class DeepFashionValDataset(torch.utils.data.Dataset):
         fasion-pairs-test.csv
         '''
         super(DeepFashionValDataset, self).__init__()
-        self.opt = opt
-        self.res = opt.input_image_resolution
-        self.pose_res = opt.input_pose_resolution
+        self.res = res
+        self.pose_res = pose_res
         
-        self.dataset_path = opt.dataset_path
-        self.annfile = pd.read_csv(os.path.join(self.dataset_path, 'fasion-annotation-test.csv'), sep=':')
+        self.dataset_path = dataset_path
+        self.annfile = pd.read_csv(os.path.join(dataset_path, 'fasion-annotation-test.csv'), sep=':')
         self.annfile = self.annfile.set_index('name')
-        self.pairlist = pd.read_csv(os.path.join(self.dataset_path, 'fasion-pairs-test.csv'), sep=',', index_col=0)
+        self.pairlist = pd.read_csv(os.path.join(dataset_path, 'fasion-pairs-test.csv'), sep=',', index_col=0)
         
-        self.interp_mode_img = torchvision.transforms.InterpolationMode.BICUBIC
-        # ValueError: Interpolation mode 'bicubic' is unsupported with Tensor input
-        self.interp_mode_pose = torchvision.transforms.InterpolationMode.NEAREST
-        
-    def trasnform_images(self, source, target, input_pose, target_pose):
-        source = TF.resize(source, self.res, self.interp_mode_img)
-        target = TF.resize(target, self.res, self.interp_mode_img)
-        input_pose = TF.resize(input_pose, self.pose_res, self.interp_mode_pose)
-        target_pose = TF.resize(target_pose, self.pose_res, self.interp_mode_pose)
-        source = TF.to_tensor(source)
-        target = TF.to_tensor(target)
-        
-        return source, target, input_pose, target_pose
+        self.transform_image_source = transforms.Compose([
+            transforms.Resize(res),
+            transforms.ToTensor(), 
+        ])
+        self.transform_image_target = transforms.Compose([
+            transforms.Resize(res),
+            transforms.ToTensor()
+        ])
+        self.transform_ann = transforms.Compose([
+            transforms.Resize(pose_res)
+        ])
     
     def __len__(self):
         return len(self.pairlist)
@@ -156,14 +137,15 @@ class DeepFashionValDataset(torch.utils.data.Dataset):
         ann_P1 = keypoints2posemap(ann_P1, img_size=self.pose_res)
         ann_P2 = keypoints2posemap(ann_P2, img_size=self.pose_res)
         
-        P1, P2, ann_P1, ann_P2 = self.trasnform_images(P1, P2, ann_P1, ann_P2)
+        P1, P2 = self.transform_image_source(P1), self.transform_image_target(P2)
+        ann_P1, ann_P2 = self.transform_ann(ann_P1), self.transform_ann(ann_P2)
         
         return {'P1': P1, 'P2': P2, 'map1': ann_P1, 'map2': ann_P2, 
                 'P1_path': P1_path, 'P2_path': P2_path}
 
 
 class Market1501TrainDataset(torch.utils.data.Dataset):
-    def __init__(self, opt):
+    def __init__(self, res=(128, 64), pose_res=(128, 64), dataset_path='./dataset/market/'):
         '''
         directories or files using for creating dataset
         train_12864
@@ -171,41 +153,25 @@ class Market1501TrainDataset(torch.utils.data.Dataset):
         fasion-pairs-train.csv
         '''
         super(Market1501TrainDataset, self).__init__()
-        self.opt = opt
-        self.res = opt.input_image_resolution
-        self.pose_res = opt.input_pose_resolution
+        self.res = res
+        self.pose_res = pose_res
         
-        self.dataset_path = opt.dataset_path
-        self.annfile = pd.read_csv(os.path.join(self.dataset_path, 'market-annotation-train.csv'), sep=':')
+        self.dataset_path = dataset_path
+        self.annfile = pd.read_csv(os.path.join(dataset_path, 'market-annotation-train.csv'), sep=':')
         self.annfile = self.annfile.set_index('name')
-        self.pairlist = pd.read_csv(os.path.join(self.dataset_path, 'market-pairs-train.csv'), sep=',')
+        self.pairlist = pd.read_csv(os.path.join(dataset_path, 'market-pairs-train.csv'), sep=',')
         
-        self.interp_mode_img = torchvision.transforms.InterpolationMode.BICUBIC
-        # ValueError: Interpolation mode 'bicubic' is unsupported with Tensor input
-        self.interp_mode_pose = torchvision.transforms.InterpolationMode.NEAREST
-        
-    def trasnform_images(self, source, target, input_pose, target_pose):
-        a_min, a_max = self.opt.random_rotate_range
-        angle = random.random() * (a_max-a_min) + a_min
-        use_flip = random.random()>0.5 if self.opt.use_random_horizontal_flip else False
-        source = TF.resize(source, self.res, self.interp_mode_img)
-        target = TF.resize(target, self.res, self.interp_mode_img)
-        input_pose = TF.resize(input_pose, self.pose_res, self.interp_mode_pose)
-        target_pose = TF.resize(target_pose, self.pose_res, self.interp_mode_pose)
-        if use_flip:
-            source = TF.hflip(source)
-            target = TF.hflip(target)
-            input_pose = TF.hflip(input_pose)
-            target_pose = TF.hflip(target_pose)
-        source = TF.rotate(source, angle, self.interp_mode_img)
-        target = TF.rotate(target, angle, self.interp_mode_img)
-        input_pose = TF.rotate(input_pose, angle, self.interp_mode_pose)
-        target_pose = TF.rotate(target_pose, angle, self.interp_mode_pose)
-        
-        source = TF.to_tensor(source)
-        target = TF.to_tensor(target)
-        
-        return source, target, input_pose, target_pose
+        self.transform_image_source = transforms.Compose([
+            transforms.Resize(res),
+            transforms.ToTensor(), 
+        ])
+        self.transform_image_target = transforms.Compose([
+            transforms.Resize(res),
+            transforms.ToTensor()
+        ])
+        self.transform_ann = transforms.Compose([
+            transforms.Resize(pose_res)
+        ])
     
     def __len__(self):
         return len(self.pairlist)
@@ -221,13 +187,14 @@ class Market1501TrainDataset(torch.utils.data.Dataset):
         ann_P1 = keypoints2posemap(ann_P1, img_size=self.pose_res)
         ann_P2 = keypoints2posemap(ann_P2, img_size=self.pose_res)
         
-        P1, P2, ann_P1, ann_P2 = self.trasnform_images(P1, P2, ann_P1, ann_P2)
+        P1, P2 = self.transform_image_source(P1), self.transform_image_target(P2)
+        ann_P1, ann_P2 = self.transform_ann(ann_P1), self.transform_ann(ann_P2)
         
         return {'P1': P1, 'P2': P2, 'map1': ann_P1, 'map2': ann_P2, 
                 'P1_path': P1_path, 'P2_path': P2_path}
 
 class Market1501ValDataset(torch.utils.data.Dataset):
-    def __init__(self, opt):
+    def __init__(self, res=(128, 64), pose_res=(128, 64), dataset_path='./dataset/market/'):
         '''
         directories or files using for creating dataset
         test_12864
@@ -235,28 +202,25 @@ class Market1501ValDataset(torch.utils.data.Dataset):
         fasion-pairs-test.csv
         '''
         super(Market1501ValDataset, self).__init__()
-        self.opt = opt
-        self.res = opt.input_image_resolution
-        self.pose_res = opt.input_pose_resolution
+        self.res = res
+        self.pose_res = pose_res
         
-        self.dataset_path = opt.dataset_path
-        self.annfile = pd.read_csv(os.path.join(self.dataset_path, 'market-annotation-test.csv'), sep=':')
+        self.dataset_path = dataset_path
+        self.annfile = pd.read_csv(os.path.join(dataset_path, 'market-annotation-test.csv'), sep=':')
         self.annfile = self.annfile.set_index('name')
-        self.pairlist = pd.read_csv(os.path.join(self.dataset_path, 'market-pairs-test.csv'), sep=',')
+        self.pairlist = pd.read_csv(os.path.join(dataset_path, 'market-pairs-test.csv'), sep=',')
         
-        self.interp_mode_img = torchvision.transforms.InterpolationMode.BICUBIC
-        # ValueError: Interpolation mode 'bicubic' is unsupported with Tensor input
-        self.interp_mode_pose = torchvision.transforms.InterpolationMode.NEAREST
-        
-    def trasnform_images(self, source, target, input_pose, target_pose):
-        source = TF.resize(source, self.res, self.interp_mode_img)
-        target = TF.resize(target, self.res, self.interp_mode_img)
-        input_pose = TF.resize(input_pose, self.pose_res, self.interp_mode_pose)
-        target_pose = TF.resize(target_pose, self.pose_res, self.interp_mode_pose)
-        source = TF.to_tensor(source)
-        target = TF.to_tensor(target)
-        
-        return source, target, input_pose, target_pose
+        self.transform_image_source = transforms.Compose([
+            transforms.Resize(res),
+            transforms.ToTensor(), 
+        ])
+        self.transform_image_target = transforms.Compose([
+            transforms.Resize(res),
+            transforms.ToTensor()
+        ])
+        self.transform_ann = transforms.Compose([
+            transforms.Resize(pose_res)
+        ])
     
     def __len__(self):
         return len(self.pairlist)
@@ -272,12 +236,12 @@ class Market1501ValDataset(torch.utils.data.Dataset):
         ann_P1 = keypoints2posemap(ann_P1, img_size=self.pose_res)
         ann_P2 = keypoints2posemap(ann_P2, img_size=self.pose_res)
         
-        P1, P2, ann_P1, ann_P2 = self.trasnform_images(P1, P2, ann_P1, ann_P2)
+        P1, P2 = self.transform_image_source(P1), self.transform_image_target(P2)
+        ann_P1, ann_P2 = self.transform_ann(ann_P1), self.transform_ann(ann_P2)
         
         return {'P1': P1, 'P2': P2, 'map1': ann_P1, 'map2': ann_P2, 
                 'P1_path': P1_path, 'P2_path': P2_path}
 
-# This Dataset is used for evaluating inception score
 class SimpleImageDataset(torch.utils.data.Dataset):
     def __init__(self, image_path, resolution=(256, 256), normalize=False):
         super(SimpleImageDataset, self).__init__()

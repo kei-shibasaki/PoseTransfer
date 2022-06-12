@@ -3,10 +3,10 @@
     "dataset_path": "./dataset/fashion/",
     "enable_line_nortify": true,
 
-    "name": "fashion",
-    "n_gpu": 1,
+    "name": "fashion_reducemlpr",
+    "n_gpu": 2,
     "steps": 500000,
-    "batch_size": 8,
+    "batch_size": 4,
     "milestones": [250000, 400000],
     "learning_rate_G": 1e-4,
     "learning_rate_D": 1e-4,
@@ -52,7 +52,7 @@
 
     "at_trans": {
         "heads": [8, 8, 8], 
-        "mlp_ratios": [2, 2, 2],
+        "mlp_ratios": [1, 1, 1],
         "drops": [0.0, 0.0, 0.0], 
         "cpe_ksizes": [3, 5, 7], 
         "encoder_depths": [6, 4, 4], 

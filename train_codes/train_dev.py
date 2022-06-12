@@ -21,25 +21,19 @@ from metrics import calculate_psnr, calculate_ssim
 from model.discriminator import Discriminator
 from model.pose_transformer import PoseTransformer
 from utils.pose_utils import draw_pose_from_map
-from utils.utils import load_option, tensor2ndarray, send_line_notify, get_best_checkpoint
+from utils.utils import load_option, tensor2ndarray, send_line_notify
 
 
 def train(opt_path):
     opt = EasyDict(load_option(opt_path))
-    
-    random.seed(opt.fine.seed)
-    np.random.seed(opt.fine.seed)
-    torch.manual_seed(opt.fine.seed)
-    if opt.fine.reproducibility:
-        torch.backends.cudnn.benchmark = False
-        torch.backends.cudnn.deterministic = True
-    
+    torch.backends.cudnn.benchmark = True
+        
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
     
-    model_name = opt.fine.name
-    batch_size = opt.fine.batch_size
-    print_freq = opt.fine.print_freq
-    eval_freq = opt.fine.eval_freq
+    model_name = opt.name
+    batch_size = opt.batch_size
+    print_freq = opt.print_freq
+    eval_freq = opt.eval_freq
     
     model_ckpt_dir = f'./experiments/{model_name}/ckpt'
     image_out_dir = f'./experiments/{model_name}/generated'
@@ -57,12 +51,8 @@ def train(opt_path):
     shutil.copy(opt_path, f'./experiments/{model_name}/{os.path.basename(opt_path)}')
     
     netG = PoseTransformer(opt).to(device)
-    if opt.fine.pretrained_path:
-        if opt.fine.pretrained_path=='_bestpoint':
-            pretrained_path = get_best_checkpoint(f'./experiments/{opt.pre.name}', metrics=opt.fine.bestpoint_metrics)
-        else:
-            pretrained_path = opt.fine.pretrained_path
-        netG_state_dict = torch.load(pretrained_path, map_location=device)
+    if opt.pretrained_path:
+        netG_state_dict = torch.load(opt.pretrained_path, map_location=device)
         netG_state_dict = netG_state_dict['netG_state_dict']
         netG.load_state_dict(netG_state_dict, strict=False)
     netD = Discriminator().to(device)
@@ -70,22 +60,17 @@ def train(opt_path):
     loss_fn_alex = lpips.LPIPS(net='alex').to(device)
     loss_fn_alex.eval()
     
-    optimG = torch.optim.Adam(netG.parameters(), lr=opt.fine.learning_rate_G, betas=opt.fine.betas)
-    optimD = torch.optim.Adam(netD.parameters(), lr=opt.fine.learning_rate_D, betas=opt.fine.betas)
-    schedulerG = torch.optim.lr_scheduler.MultiStepLR(optimG, milestones=opt.fine.milestones, gamma=0.5)
-    schedulerD = torch.optim.lr_scheduler.MultiStepLR(optimD, milestones=opt.fine.milestones, gamma=0.5)
+    optimG = torch.optim.Adam(netG.parameters(), lr=opt.learning_rate_G, betas=opt.betas)
+    optimD = torch.optim.Adam(netD.parameters(), lr=opt.learning_rate_D, betas=opt.betas)
+    schedulerG = torch.optim.lr_scheduler.MultiStepLR(optimG, milestones=opt.milestones, gamma=0.5)
+    schedulerD = torch.optim.lr_scheduler.MultiStepLR(optimD, milestones=opt.milestones, gamma=0.5)
     
     if opt.dataset_type=='fashion':
-<<<<<<< Updated upstream
-        train_dataset = DeepFashionTrainDataset(res=(256,128), pose_res=(256,128), dataset_path=opt.dataset_path)
-        val_dataset = DeepFashionValDataset(res=(256,128), pose_res=(256,128), dataset_path=opt.dataset_path)
-=======
-        train_dataset = DeepFashionTrainDataset(res=(256,176), pose_res=(256,176), dataset_path=opt.dataset_path)
-        val_dataset = DeepFashionValDataset(res=(256,176), pose_res=(256,176), dataset_path=opt.dataset_path)
->>>>>>> Stashed changes
+        train_dataset = DeepFashionTrainDataset(opt)
+        val_dataset = DeepFashionValDataset(opt)
     elif opt.dataset_type=='market':
-        train_dataset = Market1501TrainDataset(res=(128,64), pose_res=(128,64), dataset_path=opt.dataset_path)
-        val_dataset = Market1501ValDataset(res=(128,64), pose_res=(128,64), dataset_path=opt.dataset_path)
+        train_dataset = Market1501TrainDataset(opt)
+        val_dataset = Market1501ValDataset(opt)
     
     train_loader = torch.utils.data.DataLoader(
         train_dataset, batch_size=batch_size, shuffle=True, num_workers=2)
@@ -112,7 +97,7 @@ def train(opt_path):
             logits_fake = netD(fake_img.detach())
             loss_D_fake = logits_fake.mean()
             
-            gp = opt.fine.coef_gp*gradient_penalty(netD, P2, fake_img)
+            gp = opt.coef_gp*gradient_penalty(netD, P2, fake_img)
             
             loss_D = loss_D_real + loss_D_fake + gp
             
@@ -125,9 +110,9 @@ def train(opt_path):
                 netG.zero_grad()
                 logits_fake = netD(fake_img)
                 advloss = -logits_fake.mean()
-                l1loss = opt.fine.coef_l1*F.l1_loss(fake_img, P2)
+                l1loss = opt.coef_l1*F.l1_loss(fake_img, P2)
                 ploss, sloss = perceptual_loss(fake_img, P2)
-                ploss, sloss = opt.fine.coef_perc*ploss, opt.fine.coef_style*sloss
+                ploss, sloss = opt.coef_perc*ploss, opt.coef_style*sloss
                 loss_G = advloss + l1loss + ploss + sloss
                 
                 loss_G.backward()
@@ -146,12 +131,12 @@ def train(opt_path):
                     fp.write(txt)
             
             if total_step%print_freq==0 or total_step==1:
-                rest_step = opt.fine.steps-total_step
+                rest_step = opt.steps-total_step
                 time_per_step = int(time.time()-start_time) / total_step
 
                 elapsed = datetime.timedelta(seconds=int(time.time()-start_time))
                 eta = datetime.timedelta(seconds=int(rest_step*time_per_step))
-                lg = f'{total_step}/{opt.fine.steps}, Epoch:{e:03}, elepsed: {elapsed}, eta: {eta}, '
+                lg = f'{total_step}/{opt.steps}, Epoch:{e:03}, elepsed: {elapsed}, eta: {eta}, '
                 lg = lg + f'loss_D: {loss_D:f}, '
                 lg = lg + f'loss_D_real: {loss_D_real:f}, loss_D_fake: {loss_D_fake:f}, gp: {gp:f}, '
                 lg = lg + f'loss_G: {loss_G:f}, advloss: {advloss:f}, '
@@ -208,8 +193,8 @@ def train(opt_path):
                             img.save(os.path.join(image_out_dir, f'{total_step:06}', f'{j:03}_{b:02}.jpg'), 'JPEG')
 
                         val_step += 1
-                        if val_step==opt.fine.val_step: break
-                    if val_step==opt.fine.val_step: break
+                        if val_step==opt.val_step: break
+                    if val_step==opt.val_step: break
 
                 psnr_fake = psnr_fake / val_step
                 ssim_fake = ssim_fake / val_step
@@ -225,7 +210,7 @@ def train(opt_path):
                 if total_step%(50*eval_freq)==0 and opt.enable_line_nortify:
                     with open('line_nortify_token.json', 'r', encoding='utf-8') as fp:
                         token = json.load(fp)['token']
-                    send_line_notify(token, f'{opt.fine.name} Step: {total_step}\n{lg}\n{txt}')
+                    send_line_notify(token, f'{opt.name} Step: {total_step}\n{lg}\n{txt}')
 
                 torch.save({
                     'total_step': total_step,
@@ -236,11 +221,11 @@ def train(opt_path):
                     'LPIPS': lpips_val,
                 }, os.path.join(model_ckpt_dir, f'{model_name}_{total_step:06}.ckpt'))
                     
-            if total_step==opt.fine.steps:
+            if total_step==opt.steps:
                 if opt.enable_line_nortify:
                     with open('line_nortify_token.json', 'r', encoding='utf-8') as fp:
                         token = json.load(fp)['token']
-                    send_line_notify(token, f'Complete training {opt.fine.name}.')
+                    send_line_notify(token, f'Complete training {opt.name}.')
                 
                 print('Completed.')
                 exit()

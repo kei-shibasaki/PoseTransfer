@@ -6,6 +6,7 @@ import torch.utils.data
 from PIL import Image
 from tqdm import tqdm
 import argparse
+from collections import OrderedDict
 
 from utils.utils import tensor2ndarray, load_option
 from utils.pose_utils import draw_pose_from_map
@@ -14,27 +15,32 @@ from model.pose_transformer import PoseTransformer
 from easydict import EasyDict
 
 def generate_images(opt, batch_size, checkpoint_path, out_path):
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
     os.makedirs(os.path.join(out_path, 'generated'), exist_ok=True)
     os.makedirs(os.path.join(out_path, 'GT'), exist_ok=True)
     os.makedirs(os.path.join(out_path, 'comparison'), exist_ok=True)
     
     print('Preparing Data...')
     if opt.dataset_type=='fashion':
-        val_dataset = DeepFashionValDataset(res=(256,256), pose_res=(256,256), dataset_path=opt.dataset_path)
+        val_dataset = DeepFashionValDataset(opt)
     elif opt.dataset_type=='market':
-        val_dataset = Market1501ValDataset(res=(128,64), pose_res=(128,64), dataset_path=opt.dataset_path)
+        val_dataset = Market1501ValDataset(opt)
     
     val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=2)
     
     print('Creating Net...')
     net = PoseTransformer(opt).to(device)
     checkpoint = torch.load(checkpoint_path, map_location=device)
+    
+    #new_dict = OrderedDict()
+    #for key, value in checkpoint['netG_state_dict'].items():
+    #    key = key[7:]
+    #    new_dict[key] = value
+    #net.load_state_dict(new_dict)
     net.load_state_dict(checkpoint['netG_state_dict'])
     
     print('Generating Images...')
     net.eval()
-    total_step = 0
     for i, data_dict in enumerate(tqdm(val_loader)):
         P1, P2, map1, map2, P1_path, P2_path = data_dict.values()
         P1, P2, map1, map2 = P1.to(device), P2.to(device), map1.to(device), map2.to(device)
@@ -61,8 +67,12 @@ def generate_images(opt, batch_size, checkpoint_path, out_path):
             mp2 = Image.fromarray(mp2)
             real_val = Image.fromarray(real_vals[b,:,:,:])
             
-            real_val.save(os.path.join(out_path, 'GT', f'{total_step:05}.jpg'), 'JPEG')
-            fake_val.save(os.path.join(out_path, 'generated', f'{total_step:05}.jpg'), 'JPEG')
+            P1_name = os.path.splitext(os.path.basename(P1_path[b]))[0]
+            P2_name = os.path.splitext(os.path.basename(P2_path[b]))[0]
+            fname = f'{P1_name}_TO_{P2_name}.jpg'
+            
+            real_val.save(os.path.join(out_path, 'GT', fname), 'JPEG')
+            fake_val.save(os.path.join(out_path, 'generated', fname), 'JPEG')
             
             img = Image.new('RGB', size=(5*input_val.width, input_val.height), color=0)
             img.paste(input_val, box=(0, 0))
@@ -70,28 +80,31 @@ def generate_images(opt, batch_size, checkpoint_path, out_path):
             img.paste(fake_val, box=(2*input_val.width, 0))
             img.paste(mp2, box=(3*input_val.width, 0))
             img.paste(real_val, box=(4*input_val.width, 0))
-            img.save(os.path.join(out_path, 'comparison', f'{total_step:05}.jpg'), 'JPEG')
-            
-            total_step += 1
+            img.save(os.path.join(out_path, 'comparison', fname), 'JPEG')
             
 
 if __name__=='__main__':
     parser = argparse.ArgumentParser(description='A script of generate images.')
     parser.add_argument('-c', '--config', required=True, help='Path of config file')
-    parser.add_argument('-m', '--mode', default='fine', choices=['pre', 'fine'], help='log mode pre/fine')
     parser.add_argument('-b', '--batch_size', default=32, help='Batch size')
+    parser.add_argument('-ckpt', '--checkpoint_path', default=None, help='Path to the chenckpoint')
     args = parser.parse_args()
     opt = EasyDict(load_option(args.config))
     
     batch_size = int(args.batch_size)
     
+<<<<<<< Updated upstream
     if args.mode=='fine':
         model_name = opt.fine.name
         checkpoint_path = os.path.join('experiments', model_name, 'ckpt', f'{model_name}_{opt.fine.steps}.ckpt')
         # checkpoint_path = 'experiments/fashion_large_mod_fine/ckpt/fashion_large_mod_fine_098000.ckpt'
+=======
+    model_name = opt.name
+    if args.checkpoint_path==None:
+        checkpoint_path = os.path.join('experiments', model_name, 'ckpt', f'{model_name}_{opt.steps}.ckpt')
+>>>>>>> Stashed changes
     else:
-        model_name = opt.pre.name
-        checkpoint_path = os.path.join('experiments', model_name, 'ckpt', f'{model_name}_{opt.pre.steps}.ckpt')
+        checkpoint_path = args.checkpoint_path
     
     out_path = f'results/{model_name}'
     

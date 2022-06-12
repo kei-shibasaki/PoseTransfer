@@ -135,5 +135,6 @@ temp*
 experiments/*
 results/*
 trash/*
+.nfs*
 
 line_nortify_token.json
