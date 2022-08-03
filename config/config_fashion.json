@@ -46,16 +46,12 @@
         "ksizes": [5, 7, 7]
     }, 
 
-    "to_stat": {
-        "ksizes": [5, 7, 7]
-    },
-
     "at_trans": {
         "heads": [8, 8, 8], 
-        "mlp_ratios": [2, 2, 2],
+        "mlp_ratios": [1, 1, 1],
         "drops": [0.0, 0.0, 0.0], 
         "cpe_ksizes": [3, 5, 7], 
-        "encoder_depths": [6, 4, 4], 
-        "decoder_depths": [6, 4, 4]
+        "encoder_depths": [4, 2, 2], 
+        "decoder_depths": [4, 2, 2]
     }
 }

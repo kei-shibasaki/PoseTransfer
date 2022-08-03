@@ -5,6 +5,8 @@ from torch.nn import functional as F
 from model.axial_transformer import AxialTransformerBlock, ChanLayerNorm, AxialTransformerDecoderBlock
 from model.positional_encoding import ConditionalPositionalEncoding
 
+from model.misc_blocks_dev import CNNBlockLow, SwinBlockLow
+
 class ResBlock(nn.Module):
     def __init__(self, in_channels, out_channels, ksize):
         super(ResBlock, self).__init__()
@@ -86,15 +88,24 @@ class CNNTransformation(nn.Module):
         ksize = opt.cnn_trans.ksizes[idx]
         cnn_in_channel = opt.dims[-opt.n_at_trans-idx+1]
         stat_dim = opt.dims[-opt.n_at_trans-idx]
-        stat_ksize = opt.to_stat.ksizes[idx]
         
-        self.to_stat = nn.Sequential(
-            nn.Conv2d(stat_dim, dim, stat_ksize, padding=stat_ksize//2),
+        self.to_stat_mean = nn.Sequential(
+            nn.Conv2d(stat_dim, dim, kernel_size=1),
             ChanLayerNorm(dim), 
             nn.ReLU(inplace=True),
-            nn.Conv2d(dim, dim, stat_ksize, padding=stat_ksize//2), 
+            nn.Conv2d(dim, dim, kernel_size=1), 
             ChanLayerNorm(dim), 
-            nn.ReLU(inplace=True))
+            nn.ReLU(inplace=True),
+            nn.Conv2d(dim, dim, kernel_size=1))
+        
+        self.to_stat_std = nn.Sequential(
+            nn.Conv2d(stat_dim, dim, kernel_size=1),
+            ChanLayerNorm(dim), 
+            nn.ReLU(inplace=True),
+            nn.Conv2d(dim, dim, kernel_size=1), 
+            ChanLayerNorm(dim), 
+            nn.ReLU(inplace=True),
+            nn.Conv2d(dim, dim, kernel_size=1))
         
         self.expand_dims = nn.Conv2d(cnn_in_channel, dim, kernel_size=1)
         layers = []
@@ -108,14 +119,17 @@ class CNNTransformation(nn.Module):
     def calc_mean_std(self, x):
         B, C, _, _ = x.shape
 
-        mean = torch.mean(x.view(B, C, -1), 2).view(B, C, 1, 1)
-        std = torch.std(x.view(B, C, -1), 2).view(B, C, 1, 1) + 1e-10
+        mean = torch.mean(x.view(B, C, -1), dim=2).view(B, C, 1, 1)
+        std = torch.std(x.view(B, C, -1), dim=2).view(B, C, 1, 1) + 1e-10
 
         return mean, std
     
     def adaptive_inistance_normalization(self, x, y):
         x_mean, x_std = self.calc_mean_std(x)
         y_mean, y_std = self.calc_mean_std(y)
+        
+        y_mean = self.to_stat_mean(y_mean)
+        y_std = self.to_stat_std(y_std)
         
         x_mean = x_mean.expand_as(x)
         x_std = x_std.expand_as(x)
@@ -125,9 +139,8 @@ class CNNTransformation(nn.Module):
         return y_std * (x - x_mean) / x_std + y_mean
     
     def forward(self, img, feature):
-        y = self.to_stat(img)
         feature = self.expand_dims(feature)
-        x = self.adaptive_inistance_normalization(feature, y)
+        x = self.adaptive_inistance_normalization(feature, img)
         x = torch.cat([img, feature], dim=1)
         x = self.layers(x)
         return x

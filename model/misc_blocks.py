@@ -125,22 +125,3 @@ class VGG19(torch.nn.Module):
             'relu5_4': relu5_4,
         }
         return out
-
-class CNNBlockLow(nn.Module):
-    def __init__(self, opt, idx):
-        super().__init__()
-        
-
-class CNNTransformationLow(nn.Module):
-    def __init__(self, opt, idx):
-        super(CNNTransformationLow, self).__init__()
-        
-        self.encoder = Encoder(opt, idx)
-        self.decoder = Decoder(opt, idx)
-    
-    def forward(self, feature, pose):
-        # feature: (B,C,H,W), pose: (B,18+18,H,W)
-        torch.cat([feature, pose], dim=1)
-        encoded = self.encoder(feature)
-        out = self.decoder(pose, encoded)
-        return out
