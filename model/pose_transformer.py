@@ -5,8 +5,6 @@ from torch.nn import functional as F
 from model.axial_transformer import AxialTransformerBlock, ChanLayerNorm, AxialTransformerDecoderBlock
 from model.positional_encoding import ConditionalPositionalEncoding
 
-from model.misc_blocks_dev import CNNBlockLow, SwinBlockLow
-
 class ResBlock(nn.Module):
     def __init__(self, in_channels, out_channels, ksize):
         super(ResBlock, self).__init__()

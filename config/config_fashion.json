@@ -1,7 +1,7 @@
 {
     "dataset_type": "fashion",
     "dataset_path": "./dataset/fashion/",
-    "enable_line_nortify": true,
+    "enable_line_nortify": false,
 
     "name": "fashion",
     "n_gpu": 1,
